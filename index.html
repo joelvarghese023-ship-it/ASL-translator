@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sign Language Translator</title>
+    
+    <!-- TensorFlow.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { font-family: sans-serif; text-align: center; background-color: #f4f4f9; margin: 0; padding: 20px; }
+        #container { display: flex; flex-direction: column; align-items: center; gap: 20px; }
+        #output-box { padding: 20px; width: 100%; max-width: 600px; background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        #prediction { font-size: 2.5em; font-weight: bold; color: #4CAF50; text-transform: uppercase; margin: 10px 0; }
+        #status { color: #888; font-weight: bold; }
+        
+        /* Video is hidden, we only show the canvas with the drawn skeleton */
+        .input_video { display: none; }
+        .output_canvas { border-radius: 12px; background: #222; box-shadow: 0 4px 10px rgba(0,0,0,0.2); max-width: 100%; height: auto; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Sign Language Translator</h1>
+        <div id="status">Loading AI Model & Camera...</div>
+        
+        <div id="output-box">
+            <div style="color: #666; font-size: 14px;">LIVE PREDICTION</div>
+            <div id="prediction">Waiting for gesture...</div>
+        </div>
+
+        <!-- Camera feed and Drawing Canvas -->
+        <video class="input_video" autoplay playsinline></video>
+        <canvas class="output_canvas" width="640" height="480"></canvas>
+    </div>
+
+    <!-- Load your custom logic -->
+    <script src="app.js"></script>
+</body>
+</html>
