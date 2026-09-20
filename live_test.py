@@ -4,8 +4,8 @@ import mediapipe as mp
 from tensorflow.keras.models import load_model
 import os
 
-# 1. Load the Model and Map Labels
-model = load_model('bilstm_wlasl_100.h5')
+# 1. Load the Optimized Model
+model = load_model('bilstm_wlasl_100_optimized.h5')
 classes = sorted(os.listdir("dataset/split_features/train"))
 label_map = {i: word for i, word in enumerate(classes)}
 
@@ -19,10 +19,32 @@ def extract_keypoints(results):
     rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21*3)
     return np.concatenate([pose, lh, rh])
 
+def normalize_frame(frame):
+    """Applies the exact same spatial normalization used during training."""
+    if np.all(frame == 0):
+        return frame
+        
+    nose_x, nose_y, nose_z = frame[0], frame[1], frame[2]
+    ls_x, ls_y = frame[33], frame[34]
+    rs_x, rs_y = frame[36], frame[37]
+    
+    shoulder_width = np.sqrt((ls_x - rs_x)**2 + (ls_y - rs_y)**2)
+    if shoulder_width == 0: 
+        shoulder_width = 1.0
+        
+    new_frame = np.zeros_like(frame)
+    for i in range(0, len(frame), 3):
+        if not (frame[i] == 0 and frame[i+1] == 0 and frame[i+2] == 0):
+            new_frame[i] = (frame[i] - nose_x) / shoulder_width
+            new_frame[i+1] = (frame[i+1] - nose_y) / shoulder_width
+            new_frame[i+2] = (frame[i+2] - nose_z) / shoulder_width
+            
+    return new_frame
+
 # 3. Real-Time Loop
 sequence = []
 current_prediction = "Waiting..."
-threshold = 0.5
+threshold = 0.6  # Raised threshold since the optimized model is more confident
 
 cap = cv2.VideoCapture(0)
 
@@ -42,9 +64,11 @@ while cap.isOpened():
     mp.solutions.drawing_utils.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
     mp.solutions.drawing_utils.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS)
 
-    # Sequence Logic
+    # Sequence Logic with Normalization
     keypoints = extract_keypoints(results)
-    sequence.append(keypoints)
+    normalized_keypoints = normalize_frame(keypoints)
+    
+    sequence.append(normalized_keypoints)
     sequence = sequence[-60:] 
 
     if len(sequence) == 60:
