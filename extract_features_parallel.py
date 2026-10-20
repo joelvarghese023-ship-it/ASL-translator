@@ -17,8 +17,14 @@ STATIC_OUTPUT_DIR = "static_dataset"
 _worker_holistic = None
 
 def init_worker():
-    """Initializes MediaPipe Holistic once per worker process."""
+    """Initializes MediaPipe Holistic once per worker process at BelowNormal priority."""
     global _worker_holistic
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetPriorityClass(ctypes.windll.kernel32.GetCurrentProcess(), 0x00004000)
+    except Exception:
+        pass
+
     import mediapipe as mpipe
     _worker_holistic = mpipe.solutions.holistic.Holistic(
         min_detection_confidence=0.5,

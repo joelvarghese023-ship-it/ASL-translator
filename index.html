@@ -216,6 +216,25 @@
       border: 1px solid rgba(99, 102, 241, 0.3);
     }
 
+    /* ACCESSIBILITY & FOCUS STYLING */
+    :focus-visible {
+      outline: 2px solid var(--accent-cyan);
+      outline-offset: 3px;
+    }
+    button:focus-visible, input:focus-visible, select:focus-visible, .sign-chip:focus-visible, .vocab-card:focus-visible {
+      outline: 2px solid var(--accent-cyan) !important;
+      outline-offset: 2px !important;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+      }
+      .pulse { animation: none !important; }
+    }
+
     /* STAGE WRAPPERS */
     .viewport-box {
       position: relative;
@@ -1058,7 +1077,7 @@
                 </button>
               </div>
             </div>
-            <div class="tape-stream" id="tapeStream">
+            <div class="tape-stream" id="tapeStream" role="log" aria-live="polite" aria-atomic="false">
               <span class="tape-placeholder">Hold gesture to transcribe into text...</span>
             </div>
             <!-- ASSEMBLED SENTENCE TRANSLATION BOX -->
@@ -1068,17 +1087,17 @@
                   💬 Assembled English Sentence
                 </span>
                 <div style="display:flex; gap:6px;">
-                  <button class="tape-action-btn" onclick="speakAssembledSentence()" title="Speak Sentence TTS">
+                  <button class="tape-action-btn" onclick="speakAssembledSentence()" title="Speak Sentence TTS" aria-label="Speak formulated English sentence aloud">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
                     Speak
                   </button>
-                  <button class="tape-action-btn" onclick="copyAssembledSentence()" title="Copy Formulated Sentence">
+                  <button class="tape-action-btn" onclick="copyAssembledSentence()" title="Copy Formulated Sentence" aria-label="Copy formulated English sentence to clipboard">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
                     Copy
                   </button>
                 </div>
               </div>
-              <div class="assembled-sentence-text" id="assembledSentence">Sign words to formulate a natural English sentence...</div>
+              <div class="assembled-sentence-text" id="assembledSentence" role="status" aria-live="polite">Sign words to formulate a natural English sentence...</div>
             </div>
           </div>
         </div>
@@ -1394,11 +1413,10 @@
       camera3D = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
       camera3D.position.set(0, 0.05, 1.85);
 
-      // Renderer
-      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+      // Optimized High-Performance Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
       renderer.setSize(w, h);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      renderer.shadowMap.enabled = true;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
       container.appendChild(renderer.domElement);
 
       // OrbitControls
@@ -2314,60 +2332,82 @@
       playMotion();
     }
 
+    let motionAnimFrameId = null;
+    let lastMotionTimestamp = 0;
+
     function playMotion() {
+      if (motionAnimFrameId) cancelAnimationFrame(motionAnimFrameId);
       clearInterval(playbackTimer);
       isPlaying = true;
       updatePlayPauseButton();
+      lastMotionTimestamp = 0;
 
-      const fpsInterval = (1000 / 30) / playbackSpeed;
-      playbackTimer = setInterval(() => {
+      const scrubberEl = document.getElementById('scrubber');
+      const counterEl = document.getElementById('frameCounter');
+      const motionBadgeEl = document.getElementById('motionStatusBadge');
+      const sentenceBadgeEl = document.getElementById('sentenceWordBadge');
+      let lastActivePillIdx = -1;
+
+      function motionTick(now) {
+        if (!isPlaying) return;
         if (!currentMotionSequence || currentMotionSequence.length === 0) return;
 
-        if (currentFrameIndex >= currentMotionSequence.length) {
-          if (isLooping) {
-            currentFrameIndex = 0;
-          } else {
-            clearInterval(playbackTimer);
-            isPlaying = false;
-            updatePlayPauseButton();
-            document.getElementById('motionStatusBadge').innerText = "Completed";
-            return;
-          }
-        }
+        const frameDuration = (1000 / 30) / playbackSpeed;
+        if (!lastMotionTimestamp) lastMotionTimestamp = now;
+        const delta = now - lastMotionTimestamp;
 
-        updateAvatarKinematics(currentMotionSequence[currentFrameIndex]);
-        document.getElementById('scrubber').value = currentFrameIndex;
-        document.getElementById('frameCounter').innerText = `${currentFrameIndex + 1} / ${currentMotionSequence.length}`;
+        if (delta >= frameDuration) {
+          lastMotionTimestamp = now - (delta % frameDuration);
 
-        // Update Sentence Progression ribbon & badges
-        if (currentWordTimings && currentWordTimings.length > 0) {
-          const signTimings = currentWordTimings.filter(t => t.type === 'sign');
-          const currentTiming = currentWordTimings.find(t => currentFrameIndex >= t.start_frame && currentFrameIndex <= t.end_frame);
-          if (currentTiming) {
-            if (currentTiming.type === 'sign') {
-              const signIdx = signTimings.findIndex(st => st.word === currentTiming.word && st.start_frame === currentTiming.start_frame);
-              if (signIdx !== -1) {
-                signTimings.forEach((_, i) => {
-                  const el = document.getElementById(`ribbon_pill_${i}`);
-                  if (el) el.classList.toggle('active', i === signIdx);
-                });
-                const badge = document.getElementById('sentenceWordBadge');
-                if (badge) badge.innerText = `Word ${signIdx + 1} of ${signTimings.length}: ${currentTiming.word.toUpperCase()}`;
-                document.getElementById('motionStatusBadge').innerText = `Signing: ${currentTiming.word.toUpperCase()}`;
-              }
-            } else if (currentTiming.type === 'transition') {
-              const badge = document.getElementById('sentenceWordBadge');
-              if (badge) badge.innerText = `Blending: ${currentTiming.word}`;
+          if (currentFrameIndex >= currentMotionSequence.length) {
+            if (isLooping) {
+              currentFrameIndex = 0;
+            } else {
+              isPlaying = false;
+              updatePlayPauseButton();
+              if (motionBadgeEl) motionBadgeEl.innerText = "Completed";
+              return;
             }
           }
+
+          updateAvatarKinematics(currentMotionSequence[currentFrameIndex]);
+          if (scrubberEl) scrubberEl.value = currentFrameIndex;
+          if (counterEl) counterEl.innerText = `${currentFrameIndex + 1} / ${currentMotionSequence.length}`;
+
+          // Update Sentence Progression ribbon & badges (only on word transition to prevent DOM lag)
+          if (currentWordTimings && currentWordTimings.length > 0) {
+            const signTimings = currentWordTimings.filter(t => t.type === 'sign');
+            const currentTiming = currentWordTimings.find(t => currentFrameIndex >= t.start_frame && currentFrameIndex <= t.end_frame);
+            if (currentTiming) {
+              if (currentTiming.type === 'sign') {
+                const signIdx = signTimings.findIndex(st => st.word === currentTiming.word && st.start_frame === currentTiming.start_frame);
+                if (signIdx !== -1 && signIdx !== lastActivePillIdx) {
+                  lastActivePillIdx = signIdx;
+                  signTimings.forEach((_, i) => {
+                    const el = document.getElementById(`ribbon_pill_${i}`);
+                    if (el) el.classList.toggle('active', i === signIdx);
+                  });
+                  if (sentenceBadgeEl) sentenceBadgeEl.innerText = `Word ${signIdx + 1} of ${signTimings.length}: ${currentTiming.word.toUpperCase()}`;
+                  if (motionBadgeEl) motionBadgeEl.innerText = `Signing: ${currentTiming.word.toUpperCase()}`;
+                }
+              } else if (currentTiming.type === 'transition') {
+                if (sentenceBadgeEl) sentenceBadgeEl.innerText = `Blending: ${currentTiming.word}`;
+              }
+            }
+          }
+
+          currentFrameIndex++;
         }
 
-        currentFrameIndex++;
-      }, fpsInterval);
+        motionAnimFrameId = requestAnimationFrame(motionTick);
+      }
+
+      motionAnimFrameId = requestAnimationFrame(motionTick);
     }
 
     function togglePlayback() {
       if (isPlaying) {
+        if (motionAnimFrameId) cancelAnimationFrame(motionAnimFrameId);
         clearInterval(playbackTimer);
         isPlaying = false;
       } else {
@@ -2446,6 +2486,8 @@
     let currentUploadedVideoFile = null;
     let videoTrackingLoopActive = false;
 
+    let isProcessingVisionFrame = false;
+
     function initMediaPipe() {
       if (!holisticInstance) {
         holisticInstance = new Holistic({
@@ -2453,8 +2495,10 @@
         });
 
         holisticInstance.setOptions({
-          modelComplexity: 1,
+          modelComplexity: 0, // Lite Model: High-speed 60 FPS in browser
           smoothLandmarks: true,
+          enableSegmentation: false,
+          refineFaceLandmarks: false,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5
         });
@@ -2464,8 +2508,14 @@
 
       cameraInstance = new Camera(videoElement, {
         onFrame: async () => {
-          if (cameraActive && !isUploadedVideoMode && holisticInstance) {
+          if (!cameraActive || isUploadedVideoMode || !holisticInstance) return;
+          if (isProcessingVisionFrame) return; // Non-blocking: skip frame if engine is busy to prevent UI lag!
+          isProcessingVisionFrame = true;
+          try {
             await holisticInstance.send({ image: videoElement });
+          } catch(e) {
+          } finally {
+            isProcessingVisionFrame = false;
           }
         },
         width: 640,
@@ -2731,10 +2781,14 @@
         lastFrameTime = now;
       }
 
-      // Render Canvas HUD
-      canvasElement.width = videoElement.videoWidth || 640;
-      canvasElement.height = videoElement.videoHeight || 480;
-      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+      // Render Canvas HUD (Zero-reallocation: only resize if camera dimensions change)
+      const vw = videoElement.videoWidth || 640;
+      const vh = videoElement.videoHeight || 480;
+      if (canvasElement.width !== vw || canvasElement.height !== vh) {
+        canvasElement.width = vw;
+        canvasElement.height = vh;
+      }
+      canvasCtx.clearRect(0, 0, vw, vh);
 
       if (landmarkVisualMode !== 3) {
         drawHolisticLandmarks(results);
