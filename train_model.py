@@ -1,8 +1,8 @@
 import os
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Bidirectional, Dense, Masking, Input, Dropout
+from tensorflow.keras.models import Model
+from tensorflow.keras.layers import Input, Dense, Dropout, LayerNormalization, MultiHeadAttention, GlobalAveragePooling1D, Add, Conv1D
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 
 FEATURE_DIR = "dataset/split_features"
@@ -17,21 +17,15 @@ def normalize_sequence(sequence):
             normalized_seq.append(frame)
             continue
             
-        # Nose is index 0 (x, y, z)
         nose_x, nose_y, nose_z = frame[0], frame[1], frame[2]
-        
-        # Left shoulder (index 11) & Right shoulder (index 12)
         ls_x, ls_y = frame[33], frame[34]
         rs_x, rs_y = frame[36], frame[37]
         
-        # Calculate shoulder width for uniform scaling
         shoulder_width = np.sqrt((ls_x - rs_x)**2 + (ls_y - rs_y)**2)
-        if shoulder_width == 0: 
-            shoulder_width = 1.0
+        if shoulder_width == 0: shoulder_width = 1.0
             
         new_frame = np.zeros_like(frame)
         for i in range(0, len(frame), 3):
-            # Only normalize validly detected landmarks
             if not (frame[i] == 0 and frame[i+1] == 0 and frame[i+2] == 0):
                 new_frame[i] = (frame[i] - nose_x) / shoulder_width
                 new_frame[i+1] = (frame[i+1] - nose_y) / shoulder_width
@@ -41,10 +35,23 @@ def normalize_sequence(sequence):
     return np.array(normalized_seq)
 
 def augment_sequence(sequence, noise_level=0.03):
-    """Injects random spatial jitter to simulate different camera angles."""
+    """Applies Spatial Jitter AND Temporal Warping (Frame Dropping)."""
+    # 1. Spatial Jitter
     noise = np.random.normal(0, noise_level, sequence.shape)
-    mask = sequence != 0  # Do not add noise to padded zeroes
-    return sequence + (noise * mask)
+    mask = sequence != 0  
+    sequence = sequence + (noise * mask)
+    
+    # 2. Temporal Warping (Simulates faster signing speeds)
+    if np.random.rand() > 0.5:
+        # Find how many actual frames exist before padding
+        valid_frames = len([f for f in sequence if not np.all(f == 0)])
+        if valid_frames > 15:
+            # Randomly drop 10% to 30% of the frames
+            drop_count = int(valid_frames * np.random.uniform(0.1, 0.3))
+            drop_indices = np.random.choice(valid_frames, drop_count, replace=False)
+            sequence = np.delete(sequence, drop_indices, axis=0)
+            
+    return sequence
 
 def load_data(split, augment=False):
     X, y = [], []
@@ -59,15 +66,12 @@ def load_data(split, augment=False):
         for file in os.listdir(word_dir):
             if file.endswith('.npy'):
                 sequence = np.load(os.path.join(word_dir, file))
-                
-                # Apply Normalization
                 sequence = normalize_sequence(sequence)
                 
-                # Apply Augmentation (Training Only)
                 if augment:
                     sequence = augment_sequence(sequence)
                     
-                # Pad or Truncate
+                # Pad or Truncate back to MAX_FRAMES
                 if len(sequence) > MAX_FRAMES:
                     sequence = sequence[:MAX_FRAMES]
                 elif len(sequence) < MAX_FRAMES:
@@ -79,33 +83,51 @@ def load_data(split, augment=False):
                 
     return np.array(X), np.array(y), label_map
 
-print("Loading Training Data (Applying Normalization & Jitter)...")
+print("Loading and Augmenting Data...")
 X_train, y_train, label_map = load_data('train', augment=True)
-
-print("Loading Validation/Test Data (Normalization only)...")
 X_test, y_test, _ = load_data('test', augment=False)
 
-# Build the Optimized Architecture
-model = Sequential([
-    Input(shape=(MAX_FRAMES, NUM_FEATURES)),
-    Masking(mask_value=0.0),
-    
-    Bidirectional(LSTM(128, return_sequences=True)),
-    Dropout(0.5), # Force network to generalize
-    Bidirectional(LSTM(256)),
-    Dropout(0.5),
-    
-    Dense(128, activation='relu'),
-    Dropout(0.5),
-    Dense(100, activation='softmax')
-])
+# --- TRANSFORMER ARCHITECTURE ---
 
+def transformer_encoder(inputs, head_size, num_heads, ff_dim, dropout=0.4):
+    """Creates a single Transformer block."""
+    # Attention Layer
+    x = LayerNormalization(epsilon=1e-6)(inputs)
+    x = MultiHeadAttention(key_dim=head_size, num_heads=num_heads, dropout=dropout)(x, x)
+    x = Dropout(dropout)(x)
+    res = Add()([x, inputs]) # Residual Connection
+
+    # Feed Forward Layer
+    x = LayerNormalization(epsilon=1e-6)(res)
+    x = Dense(ff_dim, activation="relu")(x)
+    x = Dropout(dropout)(x)
+    x = Dense(inputs.shape[-1])(x)
+    x = Add()([x, res])
+    return x
+
+inputs = Input(shape=(MAX_FRAMES, NUM_FEATURES))
+
+# 1D Convolution adds "Positional Encoding" so the Transformer understands time order
+x = Conv1D(filters=128, kernel_size=3, padding="same", activation="relu")(inputs)
+
+# Stacked Transformer Blocks
+x = transformer_encoder(x, head_size=128, num_heads=4, ff_dim=256, dropout=0.4)
+x = transformer_encoder(x, head_size=128, num_heads=4, ff_dim=256, dropout=0.4)
+
+# Pool the 60 frames down into a single prediction vector
+x = GlobalAveragePooling1D()(x)
+x = Dropout(0.5)(x)
+x = Dense(128, activation="relu")(x)
+x = Dropout(0.5)(x)
+outputs = Dense(100, activation="softmax")(x)
+
+model = Model(inputs, outputs)
 model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 model.summary()
 
 callbacks = [
-    EarlyStopping(monitor='val_accuracy', patience=25, restore_best_weights=True),
-    ModelCheckpoint("bilstm_wlasl_100_optimized.h5", monitor='val_accuracy', save_best_only=True)
+    EarlyStopping(monitor='val_accuracy', patience=30, restore_best_weights=True),
+    ModelCheckpoint("transformer_wlasl_100.h5", monitor='val_accuracy', save_best_only=True)
 ]
 
 history = model.fit(
@@ -116,4 +138,4 @@ history = model.fit(
     callbacks=callbacks
 )
 
-print("Training complete. Best model saved as 'bilstm_wlasl_100_optimized.h5'.")
+print("Training complete. Best model saved as 'transformer_wlasl_100.h5'.")

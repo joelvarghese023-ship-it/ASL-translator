@@ -1,0 +1,33 @@
+# Python & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+sign_lang_env/
+.venv/
+venv/
+env/
+
+# Datasets and Heavy Media
+dataset/
+*.mp4
+*.avi
+*.mov
+*.npy
+*.tar*
+*.zip
+
+# Ignore heavy / temporary models, but preserve production ensemble weights
+*.h5
+!transformer_wlasl_100.h5
+!bilstm_wlasl_100_optimized.h5
+
+# Temporary & Cache files
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
