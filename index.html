@@ -1035,6 +1035,8 @@
               <line x1="8" y1="21" x2="16" y2="21"></line>
               <line x1="12" y1="17" x2="12" y2="21"></line>
             </svg>
+            3D Character Studio (Text &rarr; Sign)
+          </div>
           <div style="display:flex; align-items:center; gap:10px;">
             <div id="hoodieColorPicker" style="display:flex; align-items:center; gap:5px;" title="Change Leo's Hoodie Color">
               <button onclick="setHoodieColor(0x8b5cf6)" style="width:16px;height:16px;border-radius:50%;background:#8b5cf6;border:1px solid rgba(255,255,255,0.8);cursor:pointer;"></button>
@@ -1376,14 +1378,21 @@
         })
         .catch(e => console.log('Initial pose loaded.'));
 
-      // Window resize listener
-      window.addEventListener('resize', () => {
+      // Dynamic container resize observer & window listener
+      function handleResize() {
+        if (!container || !renderer || !camera3D) return;
         const nw = container.clientWidth;
         const nh = container.clientHeight;
-        camera3D.aspect = nw / nh;
-        camera3D.updateProjectionMatrix();
-        renderer.setSize(nw, nh);
-      });
+        if (nw > 0 && nh > 0) {
+          camera3D.aspect = nw / nh;
+          camera3D.updateProjectionMatrix();
+          renderer.setSize(nw, nh);
+        }
+      }
+      window.addEventListener('resize', handleResize);
+      if (window.ResizeObserver) {
+        new ResizeObserver(() => handleResize()).observe(container);
+      }
 
       // Render Loop with Cartoon Blinking and Natural Idle Sway
       const clock = new THREE.Clock();
@@ -2704,6 +2713,7 @@
         cardVision.style.display = 'none';
         cardAvatar.style.display = 'flex';
       }
+      setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 50);
     }
 
     function openDictionary() {
