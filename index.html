@@ -792,6 +792,69 @@
       transform: translateY(-1px);
     }
 
+    /* SENTENCE TRANSLATION BOX */
+    .sentence-translation-box {
+      margin-top: 14px;
+      background: rgba(6, 182, 212, 0.05);
+      border: 1px solid rgba(6, 182, 212, 0.25);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .sentence-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .assembled-sentence-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: #e2e8f0;
+      line-height: 1.4;
+      min-height: 22px;
+    }
+
+    /* SENTENCE PROGRESSION RIBBON */
+    .sentence-ribbon {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 8px 12px;
+      background: rgba(15, 23, 42, 0.6);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .sentence-word-pill {
+      font-size: 12px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.06);
+      color: var(--text-muted);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .sentence-word-pill.active {
+      background: rgba(6, 182, 212, 0.25);
+      color: #38bdf8;
+      border-color: #38bdf8;
+      box-shadow: 0 0 10px rgba(56, 189, 248, 0.35);
+      transform: scale(1.05);
+    }
+    .sentence-chip {
+      background: rgba(99, 102, 241, 0.15) !important;
+      border-color: rgba(99, 102, 241, 0.3) !important;
+      color: #c7d2fe !important;
+    }
+    .sentence-chip:hover {
+      background: rgba(99, 102, 241, 0.35) !important;
+      border-color: var(--accent-indigo) !important;
+      color: #fff !important;
+    }
+
     /* FOOTER */
     footer {
       padding: 16px 28px;
@@ -940,6 +1003,25 @@
             <div class="tape-stream" id="tapeStream">
               <span class="tape-placeholder">Hold gesture to transcribe into text...</span>
             </div>
+            <!-- ASSEMBLED SENTENCE TRANSLATION BOX -->
+            <div class="sentence-translation-box" id="sentenceFormulationBox">
+              <div class="sentence-header">
+                <span class="subtext" style="text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; color: #38bdf8; font-size: 11px;">
+                  💬 Assembled English Sentence
+                </span>
+                <div style="display:flex; gap:6px;">
+                  <button class="tape-action-btn" onclick="speakAssembledSentence()" title="Speak Sentence TTS">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>
+                    Speak
+                  </button>
+                  <button class="tape-action-btn" onclick="copyAssembledSentence()" title="Copy Formulated Sentence">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div class="assembled-sentence-text" id="assembledSentence">Sign words to formulate a natural English sentence...</div>
+            </div>
           </div>
         </div>
       </div>
@@ -1011,6 +1093,17 @@
             </button>
           </div>
 
+          <!-- ACTIVE SENTENCE RIBBON -->
+          <div id="sentenceRibbonWrap" style="display:none; margin-bottom: 12px;">
+            <div style="font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Sentence Progression Timeline</span>
+              <span id="sentenceWordBadge" style="color: #38bdf8; font-weight: 700;">Word 1 of 1</span>
+            </div>
+            <div class="sentence-ribbon" id="sentenceRibbon">
+              <!-- Dynamically populated sentence pills -->
+            </div>
+          </div>
+
           <!-- PLAYBACK SCRUBBER & CONTROLS -->
           <div class="playback-controls-wrap">
             <div class="scrubber-row">
@@ -1059,6 +1152,16 @@
             <span class="sign-chip" onclick="quickPlay('no')">no</span>
             <span class="sign-chip" onclick="quickPlay('dance')">dance</span>
             <span class="sign-chip" onclick="openDictionary()">+ 100 All &rarr;</span>
+          </div>
+
+          <!-- SENTENCE PRESETS -->
+          <div class="quick-chips-wrap" style="margin-top: 10px;">
+            <span class="chips-label" style="color: #818cf8;">Sentence Presets:</span>
+            <span class="sign-chip sentence-chip" onclick="quickPlaySentence('Hello! My mother wants to eat an apple.')">💬 Hello mother want apple</span>
+            <span class="sign-chip sentence-chip" onclick="quickPlaySentence('The doctor needs medicine now.')">💬 Doctor need medicine</span>
+            <span class="sign-chip sentence-chip" onclick="quickPlaySentence('Who wants to play basketball?')">💬 Who want play basketball</span>
+            <span class="sign-chip sentence-chip" onclick="quickPlaySentence('Our family enjoys eating pizza together.')">💬 Family enjoy eat pizza</span>
+            <span class="sign-chip sentence-chip" onclick="quickPlaySentence('Can you please help me study?')">💬 Please help study</span>
           </div>
         </div>
       </div>
@@ -1150,6 +1253,8 @@
     let playbackSpeed = 1.0;
     let playbackTimer = null;
     let currentWordName = "";
+    let currentWordTimings = [];
+    let currentGlosses = [];
 
     // Three.js Scene References & Avatar State
     let scene, camera3D, renderer, controls;
@@ -1971,18 +2076,89 @@
     }
 
     // --- 4. 3D PLAYBACK & SCRUBBING ENGINE ---
+    function blendClientFrames(f1, f2, steps = 8) {
+      const blended = [];
+      for (let s = 1; s <= steps; s++) {
+        const t = s / (steps + 1.0);
+        const alpha = 3.0 * t * t - 2.0 * t * t * t;
+        const frame = [];
+        for (let j = 0; j < f1.length; j++) {
+          frame.push((1.0 - alpha) * f1[j] + alpha * f2[j]);
+        }
+        blended.push(frame);
+      }
+      return blended;
+    }
+
+    function renderSentenceRibbon(timings, glosses) {
+      const ribbonWrap = document.getElementById('sentenceRibbonWrap');
+      const ribbon = document.getElementById('sentenceRibbon');
+      if (!ribbonWrap || !ribbon) return;
+
+      ribbon.innerHTML = '';
+      const signTimings = timings.filter(t => t.type === 'sign');
+      if (signTimings.length <= 1) {
+        ribbonWrap.style.display = 'none';
+        return;
+      }
+
+      ribbonWrap.style.display = 'block';
+      signTimings.forEach((st, idx) => {
+        const pill = document.createElement('div');
+        pill.className = 'sentence-word-pill' + (idx === 0 ? ' active' : '');
+        pill.id = `ribbon_pill_${idx}`;
+        pill.innerText = `${idx + 1}. ${st.word.toUpperCase()}`;
+        pill.title = `Jump to frame ${st.start_frame}`;
+        pill.onclick = () => {
+          currentFrameIndex = st.start_frame;
+          onScrub(currentFrameIndex);
+        };
+        ribbon.appendChild(pill);
+      });
+      const badge = document.getElementById('sentenceWordBadge');
+      if (badge && signTimings.length > 0) {
+        badge.innerText = `Word 1 of ${signTimings.length}: ${signTimings[0].word.toUpperCase()}`;
+      }
+    }
+
     async function synthesizeSign() {
-      const rawText = document.getElementById('signInput').value.trim().toLowerCase();
+      const rawText = document.getElementById('signInput').value.trim();
       if (!rawText) return;
 
-      const words = rawText.split(/\s+/).filter(w => w);
       const badge = document.getElementById('motionStatusBadge');
-      badge.innerText = `Loading: ${rawText}...`;
+      badge.innerText = `Translating: "${rawText}"...`;
 
-      try {
-        // Try static JSON first
-        let loadedFrames = [];
-        for (const w of words) {
+      let loadedFrames = [];
+      let timings = [];
+      let glosses = [];
+
+      // 1. Try Backend API first (/api/translate-text handles lemmatization, synonyms, stop words, & Hermite blending)
+      if (isBackendAlive) {
+        try {
+          const res = await fetch(`${API_BASE}/api/translate-text`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sentence: rawText })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.frames && data.frames.length > 0) {
+              loadedFrames = data.frames;
+              timings = data.word_timings || [];
+              glosses = data.asl_glosses || [];
+            }
+          }
+        } catch (e) {
+          console.warn('Backend sentence translation error, using client fallback:', e);
+        }
+      }
+
+      // 2. Client-side fallback if backend was offline or returned empty
+      if (loadedFrames.length === 0) {
+        const tokens = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter(w => w);
+        let currFrame = 0;
+        for (let i = 0; i < tokens.length; i++) {
+          const w = tokens[i];
           let wordFrames = null;
           try {
             const res = await fetch(`./static_dataset/${w}.json`);
@@ -1993,34 +2169,61 @@
           } catch(e) {}
 
           if (!wordFrames && isBackendAlive) {
-            const res2 = await fetch(`${API_BASE}/api/get-motion?word=${w}`);
-            if (res2.ok) {
-              const data2 = await res2.json();
-              wordFrames = data2.frames;
+            try {
+              const res2 = await fetch(`${API_BASE}/api/get-motion?word=${w}`);
+              if (res2.ok) {
+                const data2 = await res2.json();
+                wordFrames = data2.frames;
+              }
+            } catch(e) {}
+          }
+
+          if (wordFrames && wordFrames.length > 0) {
+            if (loadedFrames.length > 0) {
+              const tFrames = blendClientFrames(loadedFrames[loadedFrames.length - 1], wordFrames[0], 8);
+              timings.push({
+                type: 'transition',
+                word: `${glosses[glosses.length - 1]} → ${w}`,
+                start_frame: currFrame,
+                end_frame: currFrame + tFrames.length - 1
+              });
+              loadedFrames.push(...tFrames);
+              currFrame += tFrames.length;
             }
-          }
-
-          if (wordFrames) {
+            timings.push({
+              type: 'sign',
+              word: w,
+              start_frame: currFrame,
+              end_frame: currFrame + wordFrames.length - 1
+            });
+            glosses.push(w);
             loadedFrames.push(...wordFrames);
+            currFrame += wordFrames.length;
           }
         }
-
-        if (loadedFrames.length === 0) {
-          badge.innerText = `Sign not found for "${rawText}"`;
-          return;
-        }
-
-        currentWordName = rawText;
-        currentMotionSequence = loadedFrames;
-        currentFrameIndex = 0;
-        clearMotionTrails();
-        document.getElementById('scrubber').max = loadedFrames.length - 1;
-        document.getElementById('scrubber').value = 0;
-        badge.innerText = `Playing: ${rawText}`;
-        playMotion();
-      } catch (err) {
-        badge.innerText = `Error loading sign`;
       }
+
+      if (loadedFrames.length === 0) {
+        badge.innerText = `Sign not found for "${rawText}"`;
+        const ribbonWrap = document.getElementById('sentenceRibbonWrap');
+        if (ribbonWrap) ribbonWrap.style.display = 'none';
+        return;
+      }
+
+      currentWordName = rawText;
+      currentMotionSequence = loadedFrames;
+      currentWordTimings = timings;
+      currentGlosses = glosses;
+      currentFrameIndex = 0;
+      clearMotionTrails();
+      document.getElementById('scrubber').max = loadedFrames.length - 1;
+      document.getElementById('scrubber').value = 0;
+
+      // Render sentence progression ribbon
+      renderSentenceRibbon(timings, glosses);
+
+      badge.innerText = glosses.length > 1 ? `Sentence (${glosses.length} signs)` : `Playing: ${rawText}`;
+      playMotion();
     }
 
     function playMotion() {
@@ -2047,6 +2250,30 @@
         updateAvatarKinematics(currentMotionSequence[currentFrameIndex]);
         document.getElementById('scrubber').value = currentFrameIndex;
         document.getElementById('frameCounter').innerText = `${currentFrameIndex + 1} / ${currentMotionSequence.length}`;
+
+        // Update Sentence Progression ribbon & badges
+        if (currentWordTimings && currentWordTimings.length > 0) {
+          const signTimings = currentWordTimings.filter(t => t.type === 'sign');
+          const currentTiming = currentWordTimings.find(t => currentFrameIndex >= t.start_frame && currentFrameIndex <= t.end_frame);
+          if (currentTiming) {
+            if (currentTiming.type === 'sign') {
+              const signIdx = signTimings.findIndex(st => st.word === currentTiming.word && st.start_frame === currentTiming.start_frame);
+              if (signIdx !== -1) {
+                signTimings.forEach((_, i) => {
+                  const el = document.getElementById(`ribbon_pill_${i}`);
+                  if (el) el.classList.toggle('active', i === signIdx);
+                });
+                const badge = document.getElementById('sentenceWordBadge');
+                if (badge) badge.innerText = `Word ${signIdx + 1} of ${signTimings.length}: ${currentTiming.word.toUpperCase()}`;
+                document.getElementById('motionStatusBadge').innerText = `Signing: ${currentTiming.word.toUpperCase()}`;
+              }
+            } else if (currentTiming.type === 'transition') {
+              const badge = document.getElementById('sentenceWordBadge');
+              if (badge) badge.innerText = `Blending: ${currentTiming.word}`;
+            }
+          }
+        }
+
         currentFrameIndex++;
       }, fpsInterval);
     }
@@ -2081,6 +2308,23 @@
       if (currentMotionSequence[currentFrameIndex]) {
         updateAvatarKinematics(currentMotionSequence[currentFrameIndex]);
         document.getElementById('frameCounter').innerText = `${currentFrameIndex + 1} / ${currentMotionSequence.length}`;
+
+        // Update active sentence ribbon item on manual scrub
+        if (currentWordTimings && currentWordTimings.length > 0) {
+          const signTimings = currentWordTimings.filter(t => t.type === 'sign');
+          const currentTiming = currentWordTimings.find(t => currentFrameIndex >= t.start_frame && currentFrameIndex <= t.end_frame);
+          if (currentTiming && currentTiming.type === 'sign') {
+            const signIdx = signTimings.findIndex(st => st.word === currentTiming.word && st.start_frame === currentTiming.start_frame);
+            if (signIdx !== -1) {
+              signTimings.forEach((_, i) => {
+                const el = document.getElementById(`ribbon_pill_${i}`);
+                if (el) el.classList.toggle('active', i === signIdx);
+              });
+              const badge = document.getElementById('sentenceWordBadge');
+              if (badge) badge.innerText = `Word ${signIdx + 1} of ${signTimings.length}: ${currentTiming.word.toUpperCase()}`;
+            }
+          }
+        }
       }
     }
 
@@ -2097,6 +2341,11 @@
 
     function quickPlay(word) {
       document.getElementById('signInput').value = word;
+      synthesizeSign();
+    }
+
+    function quickPlaySentence(sentenceText) {
+      document.getElementById('signInput').value = sentenceText;
       synthesizeSign();
     }
 
@@ -2287,11 +2536,80 @@
       stream.appendChild(chip);
       stream.scrollTop = stream.scrollHeight;
 
+      // Update formulated English sentence in real-time
+      updateAssembledSentence();
+
       if (autoSpeakEnabled && window.speechSynthesis) {
         const utterance = new SpeechSynthesisUtterance(word);
         utterance.rate = 1.0;
         window.speechSynthesis.speak(utterance);
       }
+    }
+
+    async function updateAssembledSentence() {
+      const sentenceEl = document.getElementById('assembledSentence');
+      if (!sentenceEl) return;
+
+      if (!confirmedTranscription || confirmedTranscription.length === 0) {
+        sentenceEl.innerText = "Sign words to formulate a natural English sentence...";
+        return;
+      }
+
+      if (isBackendAlive) {
+        try {
+          const res = await fetch(`${API_BASE}/api/assemble-sentence`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ words: confirmedTranscription })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.english_sentence) {
+              sentenceEl.innerText = data.english_sentence;
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn('Backend sentence assembly error, using client fallback:', e);
+        }
+      }
+
+      // Client-side fallback formulation
+      const raw = confirmedTranscription.join(' ');
+      const cap = raw.charAt(0).toUpperCase() + raw.slice(1);
+      sentenceEl.innerText = cap.endsWith('.') ? cap : cap + '.';
+    }
+
+    function speakAssembledSentence() {
+      const sentenceEl = document.getElementById('assembledSentence');
+      if (!sentenceEl) return;
+      const text = sentenceEl.innerText.trim();
+      if (!text || text.startsWith("Sign words to formulate")) {
+        showToast('No assembled sentence to speak', true);
+        return;
+      }
+      if (window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        window.speechSynthesis.speak(utterance);
+        showToast('Speaking formulated sentence...');
+      }
+    }
+
+    function copyAssembledSentence() {
+      const sentenceEl = document.getElementById('assembledSentence');
+      if (!sentenceEl) return;
+      const text = sentenceEl.innerText.trim();
+      if (!text || text.startsWith("Sign words to formulate")) {
+        showToast('No sentence to copy', true);
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        showToast('Formulated sentence copied to clipboard!');
+      }).catch(() => {
+        showToast('Sentence: ' + text);
+      });
     }
 
     function speakTranscription() {
@@ -2325,6 +2643,7 @@
       confirmedTranscription = [];
       const stream = document.getElementById('tapeStream');
       stream.innerHTML = '<span class="tape-placeholder">Hold gesture to transcribe into text...</span>';
+      updateAssembledSentence();
       showToast('Transcription tape cleared');
     }
 
