@@ -143,8 +143,11 @@ def health_check():
 @app.route('/api/vocabulary', methods=['GET'])
 @app.route('/api/classes', methods=['GET'])
 def get_vocabulary():
+    total_3d = len([f for f in os.listdir(STATIC_DATASET_DIR) if f.endswith('.json')]) if os.path.exists(STATIC_DATASET_DIR) else len(classes)
     return jsonify({
         "count": len(classes),
+        "total_dataset_classes": 2000,
+        "total_3d_signs": total_3d,
         "classes": classes,
         "categories": CATEGORIES
     })
@@ -316,6 +319,10 @@ def parse_text_to_asl_glosses(raw_text):
     skipped = []
     vocab_set = set(classes)
     vocab_set.add("hello")
+    if os.path.exists(STATIC_DATASET_DIR):
+        vocab_set.update(f.replace(".json", "") for f in os.listdir(STATIC_DATASET_DIR) if f.endswith(".json"))
+    if os.path.exists(DATASET_DIR):
+        vocab_set.update(d for d in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, d)))
 
     for token in tokens:
         mapped = SYNONYMS.get(token, token)
