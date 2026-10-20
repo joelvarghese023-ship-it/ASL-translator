@@ -220,12 +220,14 @@
     .viewport-box {
       position: relative;
       width: 100%;
-      height: 420px;
-      background: #000;
+      height: 520px;
+      min-height: 480px;
+      background: radial-gradient(circle at 50% 35%, #0f172a 0%, #060913 100%);
       overflow: hidden;
       display: flex;
       align-items: center;
       justify-content: center;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     video#webcam {
@@ -246,6 +248,9 @@
     }
 
     #threejs-container {
+      position: absolute;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
       cursor: grab;
@@ -974,6 +979,12 @@
               <span id="motionStatusBadge">Ready for Synthesis</span>
             </div>
             <div class="hud-controls">
+              <button class="hud-btn" title="Zoom: Close-Up (Face & Hands)" onclick="setCameraPreset('closeup')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+              </button>
+              <button class="hud-btn" title="Zoom: Full Upper Body" onclick="setCameraPreset('default')">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="12" cy="10" r="3"></circle><path d="M7 21v-2a5 5 0 0 1 10 0v2"></path></svg>
+              </button>
               <button class="hud-btn" title="Reset Camera View" onclick="reset3DCamera()">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
               </button>
@@ -1193,9 +1204,9 @@
       scene.background = new THREE.Color(0x070b14);
       scene.fog = new THREE.FogExp2(0x070b14, 0.08);
 
-      // Camera
-      camera3D = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-      camera3D.position.set(0, 0.6, 2.2);
+      // Camera: perfectly framed on upper body & signing space
+      camera3D = new THREE.PerspectiveCamera(38, w / h, 0.1, 100);
+      camera3D.position.set(0, 0.05, 1.85);
 
       // Renderer
       renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
@@ -1208,27 +1219,29 @@
       controls = new THREE.OrbitControls(camera3D, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
-      controls.target.set(0, 0.2, 0);
+      controls.target.set(0, -0.05, 0);
+      controls.minDistance = 0.6;
+      controls.maxDistance = 4.0;
 
       // Studio Lighting
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.9);
       scene.add(ambientLight);
 
-      const keyLight = new THREE.DirectionalLight(0x06b6d4, 1.2);
-      keyLight.position.set(2, 3, 2);
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.4);
+      keyLight.position.set(1.5, 2.5, 2.5);
       scene.add(keyLight);
 
-      const fillLight = new THREE.DirectionalLight(0x6366f1, 0.8);
-      fillLight.position.set(-2, 2, -1);
+      const fillLight = new THREE.DirectionalLight(0x818cf8, 0.8);
+      fillLight.position.set(-2, 1, 1.5);
       scene.add(fillLight);
 
-      const rimLight = new THREE.DirectionalLight(0xffffff, 0.7);
-      rimLight.position.set(0, 3, -2);
+      const rimLight = new THREE.DirectionalLight(0x38bdf8, 1.0);
+      rimLight.position.set(0, 2.5, -2);
       scene.add(rimLight);
 
       // Ground Grid Plane
-      const gridHelper = new THREE.GridHelper(6, 24, 0x1e293b, 0x0f172a);
-      gridHelper.position.y = -0.9;
+      const gridHelper = new THREE.GridHelper(6, 24, 0x334155, 0x1e293b);
+      gridHelper.position.y = -0.75;
       scene.add(gridHelper);
 
       // Build 3D Characters
@@ -1287,10 +1300,9 @@
           }
 
           // Subtle idle breathing sway when not playing
-          if (!isPlaying) {
-            const breathOffset = Math.sin(elapsedTime * 2.2) * 0.005;
-            cartoonCharacter.bodyGroup.position.y = 0.08 + breathOffset;
-            cartoonCharacter.headGroup.position.y = 0.52 + breathOffset;
+          if (!isPlaying && cartoonCharacter.bodyGroup) {
+            const breathOffset = Math.sin(elapsedTime * 2.2) * 0.004;
+            cartoonCharacter.bodyGroup.position.y = -0.22 + breathOffset;
           }
         }
 
@@ -1741,48 +1753,86 @@
     function updateAvatarKinematics(frameFlatArray) {
       if (!frameFlatArray || frameFlatArray.length < 225) return;
 
-      const getVec = (idx) => {
-        const x = (frameFlatArray[idx * 3] - 0.5) * 2.2;
-        const y = -(frameFlatArray[idx * 3 + 1] - 0.5) * 2.2;
-        const z = -frameFlatArray[idx * 3 + 2] * 2.2;
-        return new THREE.Vector3(x, y, z);
+      const getRaw = (idx) => {
+        return {
+          x: frameFlatArray[idx * 3] || 0,
+          y: frameFlatArray[idx * 3 + 1] || 0,
+          z: frameFlatArray[idx * 3 + 2] || 0
+        };
       };
 
-      const nose = getVec(0);
-      const leftShoulder = getVec(11);
-      const rightShoulder = getVec(12);
-      const leftElbow = getVec(13);
-      const rightElbow = getVec(14);
-      const leftWrist = getVec(15);
-      const rightWrist = getVec(16);
+      // 1. Compute stable torso anchor (mid-chest between shoulders)
+      const rawLSh = getRaw(11);
+      const rawRSh = getRaw(12);
+
+      let chestX = 0.5, chestY = 0.5, chestZ = 0.0;
+      let sw = 0.3;
+
+      if (rawLSh.x !== 0 && rawRSh.x !== 0) {
+        chestX = (rawLSh.x + rawRSh.x) * 0.5;
+        chestY = (rawLSh.y + rawRSh.y) * 0.5;
+        chestZ = (rawLSh.z + rawRSh.z) * 0.5;
+        sw = Math.sqrt(Math.pow(rawLSh.x - rawRSh.x, 2) + Math.pow(rawLSh.y - rawRSh.y, 2));
+      }
+      if (sw < 0.05 || isNaN(sw)) sw = 0.3;
+
+      // Scale factor: standardizes shoulder width across different signers
+      const scale = 0.52 / sw;
+
+      const toVec = (idx, fallbackVec) => {
+        const raw = getRaw(idx);
+        if (raw.x === 0 && raw.y === 0) {
+          return fallbackVec ? fallbackVec.clone() : null;
+        }
+        // Invert X so the character mirrors/faces the user naturally
+        const x = -(raw.x - chestX) * scale;
+        const y = -(raw.y - chestY) * scale;
+        // Dampen depth so arms and hands stay cleanly in front of camera
+        const z = -(raw.z - chestZ) * (scale * 0.16);
+        return new THREE.Vector3(x, y, Math.max(-0.25, Math.min(0.40, z)));
+      };
+
+      // Key landmark points
+      const leftShoulder = toVec(11, new THREE.Vector3(-0.26, 0, 0));
+      const rightShoulder = toVec(12, new THREE.Vector3(0.26, 0, 0));
+      const nose = toVec(0, new THREE.Vector3(0, 0.28, 0.06));
+
+      // Anatomical rest fallbacks for elbows & wrists if undetected:
+      const leftElbowRest = leftShoulder.clone().add(new THREE.Vector3(-0.06, -0.24, 0.02));
+      const rightElbowRest = rightShoulder.clone().add(new THREE.Vector3(0.06, -0.24, 0.02));
+      const leftWristRest = leftElbowRest.clone().add(new THREE.Vector3(-0.04, -0.22, 0.04));
+      const rightWristRest = rightElbowRest.clone().add(new THREE.Vector3(0.04, -0.22, 0.04));
+
+      const leftElbow = toVec(13, leftElbowRest);
+      const rightElbow = toVec(14, rightElbowRest);
+      const leftWrist = toVec(15, leftWristRest);
+      const rightWrist = toVec(16, rightWristRest);
 
       const targetAvatar = activeCharacterType === 'cartoon' ? cartoonCharacter : (activeCharacterType === 'cyber' ? cyberAvatar : null);
 
       if (targetAvatar) {
-        // Head positioning
+        // --- 1. HEAD POSITIONING ---
         if (targetAvatar.headGroup) {
-          targetAvatar.headGroup.position.set(nose.x, nose.y + 0.08, nose.z);
+          targetAvatar.headGroup.position.set(nose.x, nose.y + 0.05, nose.z);
         } else if (targetAvatar.headMesh) {
-          targetAvatar.headMesh.position.set(nose.x, nose.y + 0.08, nose.z);
-          if (targetAvatar.visorMesh) targetAvatar.visorMesh.position.set(nose.x, nose.y + 0.08, nose.z + 0.08);
+          targetAvatar.headMesh.position.set(nose.x, nose.y + 0.05, nose.z);
+          if (targetAvatar.visorMesh) targetAvatar.visorMesh.position.set(nose.x, nose.y + 0.05, nose.z + 0.08);
         }
 
-        // Torso positioning
+        // --- 2. TORSO POSITIONING ---
         if (targetAvatar.bodyGroup) {
-          const chestMid = leftShoulder.clone().add(rightShoulder).multiplyScalar(0.5);
-          targetAvatar.bodyGroup.position.set(chestMid.x, chestMid.y - 0.22, chestMid.z);
+          targetAvatar.bodyGroup.position.set(0, -0.22, 0);
         } else if (targetAvatar.torsoMesh) {
-          const chestMid = leftShoulder.clone().add(rightShoulder).multiplyScalar(0.5);
-          targetAvatar.torsoMesh.position.set(chestMid.x, chestMid.y - 0.22, chestMid.z);
+          targetAvatar.torsoMesh.position.set(0, -0.22, 0);
         }
 
-        // Align Limb Bones / Sleeves
+        // --- 3. ALIGN LIMBS / SLEEVES ---
         alignCylinder(targetAvatar.leftUpperArm, leftShoulder, leftElbow);
         alignCylinder(targetAvatar.leftForeArm, leftElbow, leftWrist);
         alignCylinder(targetAvatar.rightUpperArm, rightShoulder, rightElbow);
         alignCylinder(targetAvatar.rightForeArm, rightElbow, rightWrist);
 
-        // Align Cuffs if cartoon
+        // --- 4. CUFFS ---
         if (targetAvatar.leftCuff) {
           targetAvatar.leftCuff.position.copy(leftWrist);
           targetAvatar.leftCuff.visible = true;
@@ -1792,7 +1842,7 @@
           targetAvatar.rightCuff.visible = true;
         }
 
-        // Articulate 10 Fingers and Bone Linkages
+        // --- 5. ARTICULATE 10 FINGERS & BONES ---
         const HAND_BONES_MAP = [
           [0, 1], [1, 2], [2, 3], [3, 4],
           [0, 5], [5, 6], [6, 7], [7, 8],
@@ -1806,12 +1856,32 @@
           const offset = h === 0 ? 33 : 33 + 21;
           const joints = targetAvatar.handJoints[h];
           const hBones = targetAvatar.handBones[h];
-          const handPts = [];
 
+          // Check if hand exists in this frame
+          let handSum = 0;
           for (let f = 0; f < 21; f++) {
-            const pt = getVec(offset + f);
+            handSum += Math.abs(frameFlatArray[(offset + f) * 3]) +
+                       Math.abs(frameFlatArray[(offset + f) * 3 + 1]);
+          }
+          const isDetected = handSum > 0.05;
+
+          if (!isDetected) {
+            // Hand not detected in this frame: hide finger joints and bones cleanly
+            if (joints) joints.forEach(j => j.visible = false);
+            if (hBones) hBones.forEach(b => b.visible = false);
+            continue;
+          }
+
+          const handPts = [];
+          for (let f = 0; f < 21; f++) {
+            const raw = getRaw(offset + f);
+            const px = -(raw.x - chestX) * scale;
+            const py = -(raw.y - chestY) * scale;
+            const pz = -(raw.z - chestZ) * (scale * 0.16);
+            const pt = new THREE.Vector3(px, py, Math.max(-0.25, Math.min(0.40, pz)));
             handPts.push(pt);
-            if (joints[f]) {
+
+            if (joints && joints[f]) {
               joints[f].position.copy(pt);
               joints[f].visible = true;
             }
@@ -1843,8 +1913,27 @@
     }
 
     function reset3DCamera() {
-      camera3D.position.set(0, 0.6, 2.2);
-      controls.target.set(0, 0.2, 0);
+      if (!camera3D || !controls) return;
+      camera3D.position.set(0, 0.05, 1.85);
+      controls.target.set(0, -0.05, 0);
+      controls.update();
+      if (typeof showToast === 'function') showToast('Camera view reset');
+    }
+
+    function setCameraPreset(mode) {
+      if (!camera3D || !controls) return;
+      if (mode === 'closeup') {
+        camera3D.position.set(0, 0.15, 1.15);
+        controls.target.set(0, 0.12, 0);
+        if (typeof showToast === 'function') showToast('Zoom: Close-up (Hands & Face)');
+      } else if (mode === 'hands') {
+        camera3D.position.set(0, -0.05, 1.3);
+        controls.target.set(0, -0.05, 0);
+        if (typeof showToast === 'function') showToast('Zoom: Hands Focus');
+      } else {
+        reset3DCamera();
+      }
+      controls.update();
     }
 
     function capture3DSnapshot() {
