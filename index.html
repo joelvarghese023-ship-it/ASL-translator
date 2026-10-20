@@ -725,6 +725,18 @@
       color: #fff;
       transform: translateY(-2px);
     }
+    .vocab-badge-ready {
+      background: rgba(16, 185, 129, 0.2);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #34d399;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
 
     /* TOAST NOTIFICATIONS */
     .toast-container {
@@ -889,7 +901,7 @@
       <button class="tab-btn active" onclick="switchViewMode('dual')">Studio View</button>
       <button class="tab-btn" onclick="switchViewMode('camera')">Camera Focus</button>
       <button class="tab-btn" onclick="switchViewMode('avatar')">3D Avatar Focus</button>
-      <button class="tab-btn" onclick="openDictionary()">Vocabulary (100 Signs)</button>
+      <button class="tab-btn" id="vocabTabBtn" onclick="openDictionary()">Vocabulary (2,000 Signs)</button>
       <button class="tab-btn" onclick="openShortcuts()">⌨️ Shortcuts</button>
     </div>
 
@@ -1186,7 +1198,7 @@
             <span class="sign-chip" onclick="quickPlay('yes')">yes</span>
             <span class="sign-chip" onclick="quickPlay('no')">no</span>
             <span class="sign-chip" onclick="quickPlay('dance')">dance</span>
-            <span class="sign-chip" onclick="openDictionary()">+ 100 All &rarr;</span>
+            <span class="sign-chip" onclick="openDictionary()">+ Browse 2,000 Signs &rarr;</span>
           </div>
 
           <!-- SENTENCE PRESETS -->
@@ -1207,12 +1219,16 @@
   <div class="dictionary-modal" id="dictModal" onclick="if(event.target===this) closeDictionary()">
     <div class="modal-card">
       <div class="modal-header">
-        <div class="modal-title">ASL Vocabulary Library (100 Benchmark Words)</div>
+        <div style="display:flex; align-items:baseline; gap:10px; flex-wrap:wrap;">
+          <div class="modal-title">WLASL-2000 Vocabulary Library</div>
+          <span id="dictStats" style="font-size:12px; color:var(--text-muted);">(2,000 Signs &bull; <span id="readyCount" style="color:var(--accent-emerald); font-weight:700;">--</span> 3D Ready)</span>
+        </div>
         <button class="close-btn" onclick="closeDictionary()">&times;</button>
       </div>
       <div class="modal-body">
         <div class="filter-pills" id="filterPills">
-          <button class="filter-btn active" onclick="filterVocab('all')">All (100)</button>
+          <button class="filter-btn active" onclick="filterVocab('all')">All Signs (2,000)</button>
+          <button class="filter-btn" id="filter3dBtn" onclick="filterVocab('3d_ready')">✨ 3D Ready (<span id="readyPillCount">--</span>)</button>
           <button class="filter-btn" onclick="filterVocab('Greetings & Basics')">Greetings</button>
           <button class="filter-btn" onclick="filterVocab('Actions & Verbs')">Verbs</button>
           <button class="filter-btn" onclick="filterVocab('Objects & Things')">Objects</button>
@@ -1221,9 +1237,19 @@
           <button class="filter-btn" onclick="filterVocab('Time & Colors')">Time & Color</button>
         </div>
 
-        <input type="text" id="dictSearch" placeholder="Filter signs..." style="padding:10px 14px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#fff;" oninput="onSearchVocab(this.value)" />
+        <div style="display:flex; gap:10px; align-items:center;">
+          <input type="text" id="dictSearch" placeholder="Search across 2,000 ASL signs (e.g. apple, dance, airplane)..." style="flex:1; padding:10px 14px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#fff;" oninput="onSearchVocab(this.value)" />
+          <span id="searchResultCount" style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono); white-space:nowrap;"></span>
+        </div>
 
         <div class="vocab-grid" id="vocabGrid"></div>
+
+        <!-- PAGINATION CONTROLS -->
+        <div id="vocabPagination" style="display:flex; align-items:center; justify-content:space-between; padding-top:12px; border-top:1px solid rgba(255,255,255,0.08);">
+          <button id="vocabPrevBtn" class="tape-action-btn" onclick="changeVocabPage(-1)">&larr; Previous</button>
+          <span id="vocabPageInfo" style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">Page 1</span>
+          <button id="vocabNextBtn" class="tape-action-btn" onclick="changeVocabPage(1)">Next &rarr;</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1319,10 +1345,17 @@
             const vRes = await fetch(`${API_BASE}/api/vocabulary`);
             if (vRes.ok) {
               const vData = await vRes.json();
+              if (vData.all_classes && vData.all_classes.length > 0) {
+                ALL_VOCABULARY_2000 = vData.all_classes;
+              }
+              if (vData.signs_3d && vData.signs_3d.length > 0) {
+                SIGNS_3D_READY = new Set(vData.signs_3d);
+              }
               if (vData.classes && vData.classes.length > 0) {
                 VOCABULARY = vData.classes;
                 if (!VOCABULARY.includes('hello')) VOCABULARY.unshift('hello');
               }
+              updateVocabStatsUI(vData);
             }
           } catch(e) {}
           return;
@@ -2959,9 +2992,41 @@
       setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 50);
     }
 
+    let ALL_VOCABULARY_2000 = [];
+    let SIGNS_3D_READY = new Set();
+    let currentVocabList = [];
+    let vocabPage = 1;
+    const VOCAB_PAGE_SIZE = 72;
+
+    function updateVocabStatsUI(vData) {
+      const readyEl = document.getElementById('readyCount');
+      if (readyEl) readyEl.innerText = vData.total_3d_signs || 0;
+      const readyPill = document.getElementById('readyPillCount');
+      if (readyPill) readyPill.innerText = vData.total_3d_signs || 0;
+      const tabBtn = document.getElementById('vocabTabBtn');
+      if (tabBtn) tabBtn.innerText = `Vocabulary (${(vData.total_dataset_classes || 2000).toLocaleString()} Signs)`;
+    }
+
     function openDictionary() {
       document.getElementById('dictModal').classList.add('show');
-      renderVocabGrid(VOCABULARY);
+      const baseList = (ALL_VOCABULARY_2000 && ALL_VOCABULARY_2000.length > 0) ? ALL_VOCABULARY_2000 : VOCABULARY;
+      currentVocabList = baseList;
+      vocabPage = 1;
+      renderCurrentVocabPage();
+      refreshVocabLibrary();
+    }
+
+    async function refreshVocabLibrary() {
+      try {
+        const res = await fetch(`${API_BASE}/api/vocabulary`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.all_classes && data.all_classes.length > 0) ALL_VOCABULARY_2000 = data.all_classes;
+          if (data.signs_3d) SIGNS_3D_READY = new Set(data.signs_3d);
+          updateVocabStatsUI(data);
+          renderCurrentVocabPage();
+        }
+      } catch(e) {}
     }
 
     function closeDictionary() {
@@ -2976,25 +3041,70 @@
       document.getElementById('shortcutsModal').classList.remove('show');
     }
 
-    function renderVocabGrid(list) {
+    function renderCurrentVocabPage() {
       const grid = document.getElementById('vocabGrid');
+      if (!grid) return;
       grid.innerHTML = '';
-      list.forEach(w => {
+      
+      const list = currentVocabList || [];
+      const totalItems = list.length;
+      const totalPages = Math.max(1, Math.ceil(totalItems / VOCAB_PAGE_SIZE));
+      if (vocabPage > totalPages) vocabPage = totalPages;
+      if (vocabPage < 1) vocabPage = 1;
+
+      const start = (vocabPage - 1) * VOCAB_PAGE_SIZE;
+      const pageItems = list.slice(start, start + VOCAB_PAGE_SIZE);
+
+      pageItems.forEach(w => {
         const item = document.createElement('div');
         item.className = 'vocab-card';
-        item.innerHTML = `<span>${w}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+        const isReady = SIGNS_3D_READY.has(w) || VOCABULARY.includes(w);
+        const badge = isReady 
+          ? `<span class="vocab-badge-ready">✨ 3D</span>` 
+          : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>`;
+        
+        item.innerHTML = `<span>${w}</span>${badge}`;
         item.onclick = () => {
           closeDictionary();
           quickPlay(w);
-          showToast(`Synthesizing "${w}"`);
+          showToast(`Synthesizing "${w}" on Cartoon Leo`);
         };
         grid.appendChild(item);
       });
+
+      const pageInfo = document.getElementById('vocabPageInfo');
+      if (pageInfo) {
+        pageInfo.innerText = `Page ${vocabPage} of ${totalPages} (${totalItems.toLocaleString()} signs)`;
+      }
+      const prevBtn = document.getElementById('vocabPrevBtn');
+      if (prevBtn) prevBtn.disabled = (vocabPage <= 1);
+      const nextBtn = document.getElementById('vocabNextBtn');
+      if (nextBtn) nextBtn.disabled = (vocabPage >= totalPages);
+
+      const countEl = document.getElementById('searchResultCount');
+      if (countEl) {
+        const totalBase = ((ALL_VOCABULARY_2000 && ALL_VOCABULARY_2000.length) || 2000);
+        countEl.innerText = totalItems < totalBase ? `${totalItems} matching` : '';
+      }
+    }
+
+    function changeVocabPage(delta) {
+      vocabPage += delta;
+      renderCurrentVocabPage();
+      const body = document.querySelector('#dictModal .modal-body');
+      if (body) body.scrollTop = 0;
     }
 
     function onSearchVocab(query) {
-      const filtered = VOCABULARY.filter(w => w.toLowerCase().includes(query.toLowerCase()));
-      renderVocabGrid(filtered);
+      const q = (query || '').trim().toLowerCase();
+      const baseList = (ALL_VOCABULARY_2000 && ALL_VOCABULARY_2000.length > 0) ? ALL_VOCABULARY_2000 : VOCABULARY;
+      if (!q) {
+        currentVocabList = baseList;
+      } else {
+        currentVocabList = baseList.filter(w => w.toLowerCase().includes(q));
+      }
+      vocabPage = 1;
+      renderCurrentVocabPage();
     }
 
     const CATEGORIES_MAP = {
@@ -3014,13 +3124,20 @@
       btns.forEach(b => b.classList.remove('active'));
       if (window.event && window.event.target) window.event.target.classList.add('active');
 
+      const baseList = (ALL_VOCABULARY_2000 && ALL_VOCABULARY_2000.length > 0) ? ALL_VOCABULARY_2000 : VOCABULARY;
+      const searchBox = document.getElementById('dictSearch');
+      if (searchBox) searchBox.value = '';
+
       if (category === 'all') {
-        renderVocabGrid(VOCABULARY);
+        currentVocabList = baseList;
+      } else if (category === '3d_ready') {
+        currentVocabList = baseList.filter(w => SIGNS_3D_READY.has(w) || VOCABULARY.includes(w));
       } else if (CATEGORIES_MAP[category]) {
         const allowed = new Set(CATEGORIES_MAP[category]);
-        const filtered = VOCABULARY.filter(w => allowed.has(w));
-        renderVocabGrid(filtered.length ? filtered : VOCABULARY);
+        currentVocabList = baseList.filter(w => allowed.has(w));
       }
+      vocabPage = 1;
+      renderCurrentVocabPage();
     }
 
     // Global Keyboard Shortcuts

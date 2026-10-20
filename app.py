@@ -20,6 +20,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_DIR = os.path.join(BASE_DIR, "dataset", "split_features", "train")
 STATIC_DATASET_DIR = os.path.join(BASE_DIR, "static_dataset")
 CLASSES_JSON_PATH = os.path.join(BASE_DIR, "classes.json")
+CLASSES_2000_PATH = os.path.join(BASE_DIR, "classes_2000.json")
 
 # 1. Load Vocab / Classes (Classes.json primary for portable Git execution)
 classes = []
@@ -29,6 +30,14 @@ if os.path.exists(CLASSES_JSON_PATH):
             classes = json.load(f)
     except Exception as e:
         print(f"Notice: Failed to read classes.json: {e}")
+
+classes_2000 = []
+if os.path.exists(CLASSES_2000_PATH):
+    try:
+        with open(CLASSES_2000_PATH, "r", encoding="utf-8") as f:
+            classes_2000 = json.load(f)
+    except Exception as e:
+        print(f"Notice: Failed to read classes_2000.json: {e}")
 
 if not classes and os.path.exists(DATASET_DIR):
     classes = sorted([d for d in os.listdir(DATASET_DIR) if os.path.isdir(os.path.join(DATASET_DIR, d))])
@@ -54,12 +63,24 @@ CATEGORIES = {
 model_transformer = None
 model_bilstm = None
 
+TRANS_2000_MODEL_PATH = os.path.join(BASE_DIR, "transformer_wlasl_2000.h5")
 TRANS_MODEL_PATH = os.path.join(BASE_DIR, "transformer_wlasl_100.h5")
 LSTM_MODEL_PATH = os.path.join(BASE_DIR, "bilstm_wlasl_100_optimized.h5")
 
-if os.path.exists(TRANS_MODEL_PATH):
+if os.path.exists(TRANS_2000_MODEL_PATH):
     try:
-        print(f"Loading Transformer model from {TRANS_MODEL_PATH}...")
+        print(f"Loading WLASL-2000 Transformer model from {TRANS_2000_MODEL_PATH}...")
+        model_transformer = load_model(TRANS_2000_MODEL_PATH)
+        if classes_2000:
+            classes = classes_2000
+            label_map = {i: word for i, word in enumerate(classes)}
+        print(f"WLASL-2000 Transformer loaded successfully ({len(classes)} classes).")
+    except Exception as e:
+        print(f"Failed to load WLASL-2000 Transformer: {e}")
+
+if model_transformer is None and os.path.exists(TRANS_MODEL_PATH):
+    try:
+        print(f"Loading Benchmark Transformer model from {TRANS_MODEL_PATH}...")
         model_transformer = load_model(TRANS_MODEL_PATH)
         print("Transformer loaded successfully.")
     except Exception as e:
@@ -117,15 +138,20 @@ def serve_static(filename):
 
 @app.route('/api/status', methods=['GET'])
 def get_status():
+    total_3d = len([f for f in os.listdir(STATIC_DATASET_DIR) if f.endswith('.json')]) if os.path.exists(STATIC_DATASET_DIR) else len(classes)
+    is_2000 = (model_transformer is not None and getattr(model_transformer, 'output_shape', [None, 0])[-1] == 2000)
     return jsonify({
         "status": "online",
         "models": {
             "transformer": model_transformer is not None,
             "bilstm": model_bilstm is not None,
-            "ensemble_active": (model_transformer is not None and model_bilstm is not None)
+            "ensemble_active": (model_transformer is not None and model_bilstm is not None),
+            "wlasl_2000_active": is_2000
         },
         "ensemble_weights": {"transformer": 0.65, "bilstm": 0.35},
         "num_classes": len(classes),
+        "total_dataset_classes": len(classes_2000) if classes_2000 else 2000,
+        "total_3d_signs": total_3d,
         "input_shape": [60, 225]
     })
 
@@ -143,12 +169,18 @@ def health_check():
 @app.route('/api/vocabulary', methods=['GET'])
 @app.route('/api/classes', methods=['GET'])
 def get_vocabulary():
-    total_3d = len([f for f in os.listdir(STATIC_DATASET_DIR) if f.endswith('.json')]) if os.path.exists(STATIC_DATASET_DIR) else len(classes)
+    signs_3d = []
+    if os.path.exists(STATIC_DATASET_DIR):
+        signs_3d = sorted([f.replace(".json", "") for f in os.listdir(STATIC_DATASET_DIR) if f.endswith(".json")])
+    
+    all_vocab = classes_2000 if classes_2000 else classes
     return jsonify({
         "count": len(classes),
-        "total_dataset_classes": 2000,
-        "total_3d_signs": total_3d,
+        "total_dataset_classes": len(all_vocab),
+        "total_3d_signs": len(signs_3d),
         "classes": classes,
+        "all_classes": sorted(all_vocab),
+        "signs_3d": signs_3d,
         "categories": CATEGORIES
     })
 
