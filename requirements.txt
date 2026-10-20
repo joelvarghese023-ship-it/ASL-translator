@@ -1,0 +1,12 @@
+# OmniSign 3D - Two-Way American Sign Language (ASL) Translator Dependencies
+Flask>=3.0.0
+flask-cors>=4.0.0
+numpy>=1.24.0,<2.0.0
+pandas>=2.0.0
+tensorflow>=2.16.0
+tf_keras>=2.16.0
+opencv-python>=4.8.0
+mediapipe>=0.10.14
+requests>=2.31.0
+scipy>=1.11.0
+h5py>=3.10.0
