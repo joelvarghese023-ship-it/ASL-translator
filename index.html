@@ -918,7 +918,14 @@
             </svg>
             Live Gesture Recognition (Sign &rarr; Text)
           </div>
-          <span class="card-badge" id="cameraStateBadge">Camera Active</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="file" id="aslVideoUploadInput" accept="video/mp4,video/webm,video/quicktime,video/avi" style="display:none;" onchange="handleASLVideoUpload(this.files[0])" />
+            <button class="tape-action-btn" onclick="document.getElementById('aslVideoUploadInput').click()" title="Upload ASL Video file to transcribe" style="background:rgba(6,182,212,0.15); border-color:var(--accent-cyan); color:#38bdf8; font-weight:700;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              Upload Video
+            </button>
+            <span class="card-badge" id="cameraStateBadge">Camera Active</span>
+          </div>
         </div>
 
         <div class="viewport-box">
@@ -927,9 +934,18 @@
 
           <!-- VIEWPORT HUD -->
           <div class="viewport-hud">
-            <div class="hud-chip" id="camStatusChip">
-              <span class="pill-dot" style="background: var(--accent-cyan);"></span>
-              <span>Tracking 225 Keypoints</span>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <div class="hud-chip" id="camStatusChip">
+                <span class="pill-dot" style="background: var(--accent-cyan);"></span>
+                <span>Tracking 225 Keypoints</span>
+              </div>
+              <div class="hud-chip" id="videoSourceChip" style="display:none; background:rgba(15,23,42,0.95); border:1px solid var(--accent-cyan); color:#fff;">
+                <span class="pill-dot" style="background:var(--accent-cyan); box-shadow:0 0 8px var(--accent-cyan);"></span>
+                <span>🎬 <span id="videoSourceFileName">video.mp4</span></span>
+                <button onclick="returnToWebcamStream()" title="Switch back to live webcam" style="margin-left:8px; padding:2px 8px; font-size:11px; color:#f87171; border:1px solid rgba(239,68,68,0.4); background:rgba(239,68,68,0.15); border-radius:4px; cursor:pointer; font-weight:700;">
+                  ✕ Return to Camera
+                </button>
+              </div>
             </div>
             <div class="hud-controls">
               <button class="hud-btn" title="Toggle Landmark Visualizer" onclick="toggleLandmarkMode()">
@@ -958,6 +974,23 @@
 
         <!-- VISION CARD DETAILS -->
         <div class="card-content">
+          <!-- UPLOADED VIDEO PLAYBACK CONTROLS -->
+          <div id="videoControlsBar" style="display:none; margin-bottom: 14px; background:rgba(15,23,42,0.7); border:1px solid rgba(6,182,212,0.3); border-radius:10px; padding:10px 14px; flex-direction:column; gap:8px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:11px; font-weight:700; color:#38bdf8; text-transform:uppercase; letter-spacing:0.05em;">🎬 Uploaded Video Player & HUD Analysis</span>
+              <button class="tape-action-btn" id="btnBatchTranscribe" onclick="batchTranscribeCurrentVideo()" style="background:rgba(99,102,241,0.25); border-color:var(--accent-indigo); color:#c7d2fe; font-weight:700;">
+                ⚡ Instant Batch Transcribe
+              </button>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <button class="icon-btn active" id="btnVideoPlayPause" onclick="toggleUploadedVideoPlay()" title="Play / Pause Video" style="padding:6px 10px;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="videoPlayPauseIcon"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+              </button>
+              <input type="range" class="scrubber-slider" id="videoTimelineScrubber" min="0" max="100" value="0" oninput="onVideoTimelineScrub(this.value)" style="flex:1;" />
+              <span id="videoTimestampLabel" style="font-size:11px; font-weight:700; color:#e2e8f0; font-family:monospace; min-width:85px; text-align:right;">00:00 / 00:00</span>
+            </div>
+          </div>
+
           <!-- TOP CANDIDATES -->
           <div>
             <div style="font-size: 12px; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">Top Model Probabilities</div>
@@ -2362,29 +2395,239 @@
     const videoElement = document.getElementById('webcam');
     const canvasElement = document.getElementById('output_canvas');
     const canvasCtx = canvasElement.getContext('2d');
+    let holisticInstance = null;
+    let isUploadedVideoMode = false;
+    let currentUploadedVideoFile = null;
+    let videoTrackingLoopActive = false;
 
     function initMediaPipe() {
-      const holistic = new Holistic({
-        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
-      });
+      if (!holisticInstance) {
+        holisticInstance = new Holistic({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`
+        });
 
-      holistic.setOptions({
-        modelComplexity: 1,
-        smoothLandmarks: true,
-        minDetectionConfidence: 0.5,
-        minTrackingConfidence: 0.5
-      });
+        holisticInstance.setOptions({
+          modelComplexity: 1,
+          smoothLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5
+        });
 
-      holistic.onResults(onVisionResults);
+        holisticInstance.onResults(onVisionResults);
+      }
 
       cameraInstance = new Camera(videoElement, {
         onFrame: async () => {
-          if (cameraActive) await holistic.send({ image: videoElement });
+          if (cameraActive && !isUploadedVideoMode && holisticInstance) {
+            await holisticInstance.send({ image: videoElement });
+          }
         },
         width: 640,
         height: 480
       });
       cameraInstance.start();
+    }
+
+    // --- UPLOADED VIDEO GESTURE RECOGNITION & BATCH TRANSCRIPTION ---
+    function handleASLVideoUpload(file) {
+      if (!file) return;
+      currentUploadedVideoFile = file;
+      isUploadedVideoMode = true;
+
+      // Stop webcam camera stream
+      if (cameraInstance) {
+        try { cameraInstance.stop(); } catch(e) {}
+      }
+      if (videoElement.srcObject) {
+        try {
+          videoElement.srcObject.getTracks().forEach(t => t.stop());
+          videoElement.srcObject = null;
+        } catch(e) {}
+      }
+
+      // Normal unmirrored perspective for pre-recorded signing videos
+      videoElement.style.transform = 'none';
+      canvasElement.style.transform = 'none';
+
+      // Load uploaded video file into player
+      const fileUrl = URL.createObjectURL(file);
+      videoElement.src = fileUrl;
+      videoElement.muted = true;
+      videoElement.loop = false;
+      videoElement.load();
+
+      // Update UI HUD & state
+      document.getElementById('videoSourceChip').style.display = 'flex';
+      document.getElementById('videoControlsBar').style.display = 'flex';
+      document.getElementById('videoSourceFileName').innerText = file.name;
+      document.getElementById('cameraStateBadge').innerText = 'Video Active';
+      const camChipLabel = document.getElementById('camStatusChip').querySelector('span:last-child');
+      if (camChipLabel) camChipLabel.innerText = 'Tracking Video Stream';
+
+      videoElement.onloadedmetadata = () => {
+        updateVideoTimelineUI();
+        videoElement.play();
+      };
+
+      videoElement.onplay = () => {
+        updateVideoPlayPauseIcon(true);
+        if (!videoTrackingLoopActive) {
+          videoTrackingLoopActive = true;
+          runVideoTrackingLoop();
+        }
+      };
+
+      videoElement.onpause = () => {
+        updateVideoPlayPauseIcon(false);
+        videoTrackingLoopActive = false;
+      };
+
+      videoElement.onended = () => {
+        updateVideoPlayPauseIcon(false);
+        videoTrackingLoopActive = false;
+        showToast('Video playback completed');
+      };
+
+      videoElement.ontimeupdate = () => {
+        updateVideoTimelineUI();
+      };
+
+      showToast(`Loaded "${file.name}". Playing with real-time AI tracking...`);
+    }
+
+    function toggleUploadedVideoPlay() {
+      if (!isUploadedVideoMode) return;
+      if (videoElement.paused) {
+        videoElement.play();
+      } else {
+        videoElement.pause();
+      }
+    }
+
+    function updateVideoPlayPauseIcon(playing) {
+      const icon = document.getElementById('videoPlayPauseIcon');
+      if (!icon) return;
+      if (playing) {
+        icon.innerHTML = `<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>`;
+      } else {
+        icon.innerHTML = `<polygon points="5 3 19 12 5 21 5 3"></polygon>`;
+      }
+    }
+
+    function onVideoTimelineScrub(val) {
+      if (!isUploadedVideoMode || !videoElement.duration) return;
+      const pct = parseFloat(val) / 100.0;
+      videoElement.currentTime = pct * videoElement.duration;
+      updateVideoTimelineUI();
+    }
+
+    function updateVideoTimelineUI() {
+      if (!isUploadedVideoMode || !videoElement.duration) return;
+      const cur = videoElement.currentTime || 0;
+      const dur = videoElement.duration || 1;
+      const pct = (cur / dur) * 100;
+      const scrubber = document.getElementById('videoTimelineScrubber');
+      if (scrubber) scrubber.value = pct;
+      const label = document.getElementById('videoTimestampLabel');
+      if (label) {
+        label.innerText = `${formatSeconds(cur)} / ${formatSeconds(dur)}`;
+      }
+    }
+
+    function formatSeconds(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m < 10 ? '0' + m : m}:${s < 10 ? '0' + s : s}`;
+    }
+
+    async function runVideoTrackingLoop() {
+      if (!isUploadedVideoMode || videoElement.paused || videoElement.ended) {
+        videoTrackingLoopActive = false;
+        return;
+      }
+      try {
+        if (holisticInstance) {
+          await holisticInstance.send({ image: videoElement });
+        }
+      } catch(e) {}
+
+      if (isUploadedVideoMode && !videoElement.paused) {
+        requestAnimationFrame(runVideoTrackingLoop);
+      } else {
+        videoTrackingLoopActive = false;
+      }
+    }
+
+    async function batchTranscribeCurrentVideo() {
+      if (!currentUploadedVideoFile) {
+        showToast('Please upload an ASL video file first', true);
+        return;
+      }
+
+      const btn = document.getElementById('btnBatchTranscribe');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = `⏳ Analyzing...`;
+      btn.disabled = true;
+      showToast('Extracting landmarks & transcribing full video...');
+
+      try {
+        const formData = new FormData();
+        formData.append('video', currentUploadedVideoFile);
+
+        const res = await fetch(`${API_BASE}/api/transcribe-video`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.recognized_words && data.recognized_words.length > 0) {
+            clearTranscription();
+            data.recognized_words.forEach(w => appendWordToTape(w));
+            if (data.english_sentence) {
+              document.getElementById('assembledSentence').innerText = data.english_sentence;
+            }
+            showToast(`Transcribed: "${data.english_sentence}" (${data.recognized_words.length} signs)`);
+          } else {
+            showToast('No recognizable signs detected with high confidence', true);
+          }
+        } else {
+          showToast('Batch transcription failed on server', true);
+        }
+      } catch(err) {
+        console.error(err);
+        showToast('Error during video transcription', true);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+      }
+    }
+
+    function returnToWebcamStream() {
+      isUploadedVideoMode = false;
+      videoTrackingLoopActive = false;
+      videoElement.pause();
+      videoElement.src = '';
+      currentUploadedVideoFile = null;
+
+      // Restore mirror transform for webcam
+      videoElement.style.transform = 'scaleX(-1)';
+      canvasElement.style.transform = 'scaleX(-1)';
+
+      // Hide video overlay UI
+      document.getElementById('videoSourceChip').style.display = 'none';
+      document.getElementById('videoControlsBar').style.display = 'none';
+      document.getElementById('cameraStateBadge').innerText = 'Camera Active';
+      const camChipLabel = document.getElementById('camStatusChip').querySelector('span:last-child');
+      if (camChipLabel) camChipLabel.innerText = 'Tracking 225 Keypoints';
+
+      // Restart live webcam
+      if (cameraInstance) {
+        cameraInstance.start();
+      } else {
+        initMediaPipe();
+      }
+      showToast('Returned to live webcam stream');
     }
 
     function extractLandmarksFromResults(results) {

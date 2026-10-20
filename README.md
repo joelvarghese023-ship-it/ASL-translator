@@ -130,6 +130,7 @@ The backend exposes the following RESTful endpoints:
 | `/api/get-motion` | `GET` / `POST` | Fetches 3D kinematic keyframe trajectories for a word or phrase (`?word=hello`). |
 | `/api/translate-text` | `POST` | Sentence-to-sign compiler: accepts `{"sentence": "..."}` and returns normalized glosses, skipped words, word timings, and blended multi-sign frames. |
 | `/api/assemble-sentence` | `POST` | Sign-to-sentence formulator: accepts `{"words": ["..."]}` and returns grammatical, punctuated English sentences. |
+| `/api/transcribe-video` | `POST` | Full ASL Video Transcriber: accepts uploaded video file (`multipart/form-data`) and returns recognized signs, timestamps, and assembled English sentence. |
 
 ---
 

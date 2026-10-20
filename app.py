@@ -1,8 +1,11 @@
 import os
-import time
-import json
 os.environ["TF_USE_LEGACY_KERAS"] = "1"
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+import time
+import json
+import tempfile
+import cv2
+import mediapipe as mp
 
 import numpy as np
 import pandas as pd
@@ -517,6 +520,152 @@ def assemble_sentence():
         "asl_glosses": words,
         "english_sentence": english
     })
+
+# Endpoint 4: Video Upload -> Full ASL Transcription & Sentence Formulation
+def extract_video_landmarks_and_transcribe(video_path):
+    """Processes an uploaded video file using MediaPipe Holistic and transcribes ASL signs."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        return [], "", [], 0, 0.0
+
+    fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    total_vid_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    mp_holistic = mp.solutions.holistic
+    frames_buffer = []
+
+    with mp_holistic.Holistic(
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5,
+        model_complexity=1
+    ) as holistic:
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image_rgb.flags.writeable = False
+            results = holistic.process(image_rgb)
+
+            pose = np.array([[res.x, res.y, res.z] for res in results.pose_landmarks.landmark]).flatten() if results.pose_landmarks else np.zeros(33 * 3)
+            lh = np.array([[res.x, res.y, res.z] for res in results.left_hand_landmarks.landmark]).flatten() if results.left_hand_landmarks else np.zeros(21 * 3)
+            rh = np.array([[res.x, res.y, res.z] for res in results.right_hand_landmarks.landmark]).flatten() if results.right_hand_landmarks else np.zeros(21 * 3)
+            kp = np.concatenate([pose, lh, rh]).tolist()
+            frames_buffer.append(kp)
+
+    cap.release()
+
+    if not frames_buffer:
+        return [], "", [], total_vid_frames, fps
+
+    seq_len = 60
+    stride = 30
+    total_extracted = len(frames_buffer)
+    recognized_segments = []
+    recognized_words = []
+
+    if total_extracted < seq_len:
+        arr = np.array(frames_buffer, dtype=np.float32)
+        indices = np.linspace(0, total_extracted - 1, seq_len)
+        resampled = np.zeros((seq_len, arr.shape[1]), dtype=np.float32)
+        for col in range(arr.shape[1]):
+            resampled[:, col] = np.interp(indices, np.arange(total_extracted), arr[:, col])
+        windows = [(0, resampled.tolist())]
+    else:
+        windows = []
+        for start_idx in range(0, total_extracted - seq_len + 1, stride):
+            windows.append((start_idx, frames_buffer[start_idx : start_idx + seq_len]))
+        if (total_extracted - seq_len) % stride != 0:
+            windows.append((total_extracted - seq_len, frames_buffer[-seq_len:]))
+
+    best_candidate = None
+    best_candidate_conf = 0.0
+    best_candidate_sec = (0.0, round(total_extracted / max(fps, 1.0), 2))
+
+    for start_idx, win in windows:
+        norm_seq = normalize_sequence(win)
+        interp_seq = interpolate_sequence(norm_seq)
+        input_data = np.expand_dims(interp_seq, axis=0)
+
+        preds = np.zeros(len(classes))
+        if model_transformer is not None:
+            p_trans = model_transformer.predict(input_data, verbose=0)[0]
+            preds += 0.65 * p_trans
+        if model_bilstm is not None:
+            p_lstm = model_bilstm.predict(input_data, verbose=0)[0]
+            preds += 0.35 * p_lstm
+
+        top_idx = int(np.argmax(preds))
+        top_conf = float(preds[top_idx]) * 100.0
+        top_word = label_map.get(top_idx, "Unknown")
+        start_sec = round(start_idx / fps, 2)
+        end_sec = round(min(total_extracted, start_idx + seq_len) / fps, 2)
+
+        if top_conf > best_candidate_conf and top_word != "Unknown":
+            best_candidate = top_word
+            best_candidate_conf = top_conf
+            best_candidate_sec = (start_sec, end_sec)
+
+        if top_conf >= 25.0 and top_word != "Unknown":
+            if not recognized_words or recognized_words[-1] != top_word:
+                recognized_words.append(top_word)
+                recognized_segments.append({
+                    "word": top_word,
+                    "confidence": round(top_conf, 1),
+                    "start_sec": start_sec,
+                    "end_sec": end_sec
+                })
+
+    # Fallback to highest confidence candidate if all windows were below threshold
+    if not recognized_words and best_candidate:
+        recognized_words.append(best_candidate)
+        recognized_segments.append({
+            "word": best_candidate,
+            "confidence": round(best_candidate_conf, 1),
+            "start_sec": best_candidate_sec[0],
+            "end_sec": best_candidate_sec[1]
+        })
+
+    english_sentence = assemble_english_sentence(recognized_words)
+    return recognized_words, english_sentence, recognized_segments, total_extracted, fps
+
+@app.route('/api/transcribe-video', methods=['POST'])
+def transcribe_video():
+    if 'video' not in request.files and 'file' not in request.files:
+        return jsonify({"error": "No video file uploaded (provide form field 'video' or 'file')"}), 400
+
+    uploaded_file = request.files.get('video') or request.files.get('file')
+    if not uploaded_file or uploaded_file.filename == '':
+        return jsonify({"error": "Empty filename provided"}), 400
+
+    suffix = os.path.splitext(uploaded_file.filename)[1] or '.mp4'
+    temp_fd, temp_path = tempfile.mkstemp(suffix=suffix)
+    os.close(temp_fd)
+
+    try:
+        uploaded_file.save(temp_path)
+        words, sentence, segments, total_frames, fps = extract_video_landmarks_and_transcribe(temp_path)
+        duration_sec = round(total_frames / max(fps, 1.0), 2)
+
+        return jsonify({
+            "success": True,
+            "filename": uploaded_file.filename,
+            "duration_sec": duration_sec,
+            "fps": round(fps, 2),
+            "total_frames": total_frames,
+            "recognized_words": words,
+            "english_sentence": sentence,
+            "segments": segments
+        })
+    except Exception as e:
+        print(f"Error transcribing video: {e}")
+        return jsonify({"error": f"Failed to transcribe video: {str(e)}"}), 500
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
