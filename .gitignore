@@ -24,6 +24,13 @@ dataset/
 !transformer_wlasl_100.h5
 !bilstm_wlasl_100_optimized.h5
 
+# Legacy and Temporary prototypes
+tfjs_model/
+app.js
+model.h5
+convert_dataset.py
+extract_features.py
+
 # Temporary & Cache files
 *.log
 *.tmp
@@ -31,3 +38,4 @@ dataset/
 Thumbs.db
 .vscode/
 .idea/
+scratch/
