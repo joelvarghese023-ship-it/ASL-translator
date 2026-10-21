@@ -34,6 +34,7 @@ extract_features.py
 # Temporary & Cache files
 *.log
 *.tmp
+~$*
 .DS_Store
 Thumbs.db
 .vscode/
