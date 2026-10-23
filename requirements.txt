@@ -10,3 +10,4 @@ mediapipe>=0.10.14
 requests>=2.31.0
 scipy>=1.11.0
 h5py>=3.10.0
+python-pptx>=1.0.0
